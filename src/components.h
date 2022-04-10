@@ -4,14 +4,24 @@
 #define COMPONENTS_H
 
 // Draw
+
+typedef struct {
+  float x, y;
+} Vec2D;
+
 typedef struct {
   float r, g, b, a;
 } Color;
 
-typedef struct DrawComponent {
-  float w,h;
+typedef struct {
+  Vec2D dim;
   Color color;
-  float rotation;
+  Vec2D rotation;
 } DrawComponent;
+
+typedef struct {
+  Vec2D veloc;
+  Vec2D accel;
+} PhysicsComponent;
 
 #endif

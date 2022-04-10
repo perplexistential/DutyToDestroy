@@ -2,9 +2,10 @@
 #define GAME_H
 
 #include "entity.h"
-#include "state.h"
 #include "input.h"
+#include "state.h"
 #include "components.h"
+#include "gunsandammo.h"
 
 typedef struct Level {
   int tower_count;
@@ -13,13 +14,13 @@ typedef struct Level {
 } Level;
 
 typedef struct {
-  SceneUpdateFn *StartingScene;
-  SceneUpdateFn *ReadyScene;
-  SceneUpdateFn *GoingScene;
-  SceneUpdateFn *WinScene;
-  SceneUpdateFn *LoseScene;
-  SceneUpdateFn *CreditsScene;
-  SceneUpdateFn *ExitGame;
+  Scene StartingScene;
+  Scene ReadyScene;
+  Scene GoingScene;
+  Scene WinScene;
+  Scene LoseScene;
+  Scene CreditsScene;
+  Scene ExitGame;
 } Scenes;
 
 typedef struct {

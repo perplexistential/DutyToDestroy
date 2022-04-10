@@ -3,6 +3,10 @@
 
 #include "entity.h"
 
+typedef struct {
+  
+} InputEvent;
+
 #define INPUT_COMMAND(n) void n(Entity *e)
 typedef INPUT_COMMAND(InputCommandFn);
 
@@ -22,10 +26,24 @@ typedef struct {
 
 typedef struct {
   InputHandler ih;
+  int pressed_w;
+  int pressed_s;
+  int pressed_a;
+  int pressed_d;
+  int pressed_j;
+  int pressed_i;
+  int pressed_l;
+  int pressed_up_arrow;
+  int pressed_down_arrow;
+  int pressed_left_arrow;
+  int pressed_right_arrow;
   InputCommandFn *key_w;
   InputCommandFn *key_s;
   InputCommandFn *key_a;
   InputCommandFn *key_d;
+  InputCommandFn *key_j;
+  InputCommandFn *key_i;
+  InputCommandFn *key_l;
   InputCommandFn *key_up_arrow;
   InputCommandFn *key_down_arrow;
   InputCommandFn *key_left_arrow;
@@ -37,6 +55,12 @@ typedef struct {
 
 typedef struct {
   InputHandler ih;
+  int pressed_up;
+  int pressed_down;
+  int pressed_left;
+  int pressed_right;
+  int pressed_b;
+  int pressed_a;
   InputCommandFn *dpad_up;
   InputCommandFn *dpad_down;
   InputCommandFn *dpad_left;

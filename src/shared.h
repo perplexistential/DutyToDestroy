@@ -543,6 +543,9 @@ void *GameAllocateMemory(GameMemory *memory, size_t size)
   return result;
 }
 
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+
 // Simple helper macro to make allocation of structs easier, you
 // could also use a template for this
 #define GameAllocateStruct(memory, type)                                       \
@@ -554,7 +557,7 @@ typedef PLATFORM_SET_BACKGROUND_COLOR(PlatformSetBackgroundColorFn);
 // Demonstration boxes
 #define PLATFORM_DRAW_BOX(n)                                                   \
   void n(float x, float y, float width, float height, float r, float g,        \
-         float b, float a)
+         float b, float a, float rotation)
 typedef PLATFORM_DRAW_BOX(PlatformDrawBoxFn);
 
 // Image and Sprite loading
@@ -674,7 +677,7 @@ typedef struct
 
 #define GAME_INIT(n) void n(GameMemory memory, PlatformAPI api, int screen_w, int screen_h)
 typedef GAME_INIT(GameInitFn);
-#define GAME_UPDATE(n) void n(float dt)
+#define GAME_UPDATE(n) void n(float t, float dt)
 typedef GAME_UPDATE(GameUpdateFn);
 
 #define GAME_RENDER(n) void n()
@@ -764,7 +767,7 @@ enum {
 #define GAME_JOY_DEVICE_EVENT(n) void n(uint32_t id, uint8_t event)
 typedef GAME_JOY_DEVICE_EVENT(GameJoyDeviceEventFn);
 
-#define GAME_JOY_BUTTON_EVENT(n) void n(uint32_t id, uint8_t button, uint8_t state)
+#define GAME_JOY_BUTTON_EVENT(n) void n(uint32_t id, uint8_t button, uint8_t button_state)
 typedef GAME_JOY_BUTTON_EVENT(GameJoyButtonEventFn);
 
 enum {
@@ -811,8 +814,26 @@ enum {
   CONTROLLER_TYPE_PS5
 };
 
+enum {
+  CONTROLLER_BUTTON_A,
+  CONTROLLER_BUTTON_B,
+  CONTROLLER_BUTTON_X,
+  CONTROLLER_BUTTON_Y,
+  CONTROLLER_BUTTON_BACK,
+  CONTROLLER_BUTTON_GUIDE,
+  CONTROLLER_BUTTON_START,
+  CONTROLLER_BUTTON_LEFTSTICK,
+  CONTROLLER_BUTTON_RIGHTSTICK,
+  CONTROLLER_BUTTON_LEFTSHOULDER,
+  CONTROLLER_BUTTON_RIGHTSHOULDER,
+  CONTROLLER_BUTTON_DPAD_UP,
+  CONTROLLER_BUTTON_DPAD_DOWN,
+  CONTROLLER_BUTTON_DPAD_LEFT,
+  CONTROLLER_BUTTON_DPAD_RIGHT,
+};
+
 #define GAME_CONTROLLER_BUTTON_EVENT(n)                                        \
-  void n(uint32_t id, uint8_t button, uint8_t state)
+  void n(uint32_t id, uint8_t button, uint8_t button_state)
 typedef GAME_CONTROLLER_BUTTON_EVENT(GameControllerButtonEventFn);
 
 enum { TOUCHPAD_DOWN = 0, TOUCHPAD_UP, TOUCHPAD_MOTION };

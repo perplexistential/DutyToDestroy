@@ -1,4 +1,6 @@
 #include <assert.h>
+#include <bits/time.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdarg.h>
@@ -10,6 +12,7 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <time.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_events.h>
@@ -393,13 +396,20 @@ PLATFORM_DRAW_BOX(DrawBox)
 {
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glEnable(GL_BLEND);
+
+  glPushMatrix();
+  glRotatef(rotation, 0.0f, 0.0f, 1.0f);
+  glColor4f(r, g, b, a);
+  glRectf(x, y, x+width, y+height);
+  /*
   glBegin(GL_QUADS);
-    glColor4f(r, g, b, a);
     glVertex2f(x, y);
     glVertex2f(x+width, y);
     glVertex2f(x+width, y+height);
     glVertex2f(x, y+height);
   glEnd();
+  */
+  glPopMatrix();
   glDisable(GL_BLEND);
 }
 
@@ -479,6 +489,17 @@ PLATFORM_QUIT(QuitGame) {
   Quit();
 }
 
+void resize_window()
+{
+  glViewport(state.screen_x, state.screen_y, (GLsizei)state.screen_w, (GLsizei)state.screen_h);
+  glMatrixMode(GL_PROJECTION);
+  glLoadIdentity();
+  glOrtho(-state.screen_w/2.0f, state.screen_w/2.0f,
+	  -state.screen_h/2.0f, state.screen_h/2.0f, 0.0f, 1.0f);
+  glMatrixMode(GL_MODELVIEW);
+  glLoadIdentity();
+}
+
 PLATFORM_CREATE_WINDOW(CreateWindow) {
   int index = MAX_WINDOWS;
   if (state.window_count > MAX_WINDOWS) {
@@ -495,9 +516,7 @@ PLATFORM_CREATE_WINDOW(CreateWindow) {
   // using OpenGL render context
   state.gl_context[state.window_count] = SDL_GL_CreateContext(state.windows[0]); 
   SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  glOrtho(0.0f, 1.0f*width, 0.0f, 1.0f*height, 0.0f, 1.0f);
+  resize_window();
   index = state.window_count;
   state.window_count++;
   return index;
@@ -873,405 +892,430 @@ GameMemory AllocateGameMemory()
     return result;
 }
 
-void GameLoop()
+void SendInput()
 {
-  for(;;) {
-    SDL_Event event;
-    while(SDL_PollEvent(&event)) {
-      switch (event.type) {
+  SDL_Event event;
+  while(SDL_PollEvent(&event)) {
+    switch (event.type) {
 
       // App closing
-      case SDL_QUIT:
-      case SDL_APP_TERMINATING:
-	if (state.game_code.game_quit)
-	  state.game_code.game_quit();
-	Quit();
-	break;
+    case SDL_QUIT:
+    case SDL_APP_TERMINATING:
+      if (state.game_code.game_quit)
+	state.game_code.game_quit();
+      Quit();
+      break;
 
-      case SDL_APP_LOWMEMORY:
-	if (state.game_code.game_low_memory)
-	  state.game_code.game_low_memory();
-	break;
+    case SDL_APP_LOWMEMORY:
+      if (state.game_code.game_low_memory)
+	state.game_code.game_low_memory();
+      break;
 
-      case SDL_DISPLAYEVENT:
-	switch (event.display.event) {
-	case SDL_DISPLAYEVENT_CONNECTED:
-	  break;
-	case SDL_DISPLAYEVENT_DISCONNECTED:
-	  break;
-	case SDL_DISPLAYEVENT_ORIENTATION:
-	  break;
-	}
+    case SDL_DISPLAYEVENT:
+      switch (event.display.event) {
+      case SDL_DISPLAYEVENT_CONNECTED:
 	break;
-	
-      case SDL_WINDOWEVENT:
-	switch (event.window.event) {
-        case SDL_WINDOWEVENT_SHOWN:
-	  if (state.game_code.game_window_shown)
-	    state.game_code.game_window_shown(event.window.windowID, 1);
-	  break;
-        case SDL_WINDOWEVENT_HIDDEN:
-	  if (state.game_code.game_window_shown)
-	    state.game_code.game_window_shown(event.window.windowID, 0);
-	  break;
-        case SDL_WINDOWEVENT_MOVED:
-	  if (state.game_code.game_window_moved) {
-	    state.screen_x = event.window.data1;
-	    state.screen_y = event.window.data2;
-	    state.game_code.game_window_moved(event.window.windowID,
-					      event.window.data1,
-					      event.window.data2);
-	  }
-	  break;
-        case SDL_WINDOWEVENT_RESIZED:
-	  if (state.game_code.game_window_resized){
-	    state.screen_w = event.window.data1;
-	    state.screen_h = event.window.data2;
-	    state.game_code.game_window_resized(event.window.windowID,
-						event.window.data1,
-						event.window.data2);
-	    glViewport(state.screen_x, state.screen_y, state.screen_w, state.screen_h);
-	    glMatrixMode(GL_PROJECTION);
-	    glLoadIdentity();
-	    glOrtho(0.0f, 1.0f*state.screen_w, 0.0f, 1.0f*state.screen_h, 0.0f, 1.0f);
-	  }
-	  break;
-        case SDL_WINDOWEVENT_MINIMIZED:
-	  if (state.game_code.game_window_minmaxed)
-	    state.game_code.game_window_minmaxed(event.window.windowID, 1);
-	  break;
-        case SDL_WINDOWEVENT_MAXIMIZED:
-	  if (state.game_code.game_window_minmaxed)
-	    state.game_code.game_window_minmaxed(event.window.windowID, 0);
-	  break;
-        case SDL_WINDOWEVENT_ENTER:
-	  if (state.game_code.game_window_moused)
-	    state.game_code.game_window_moused(event.window.windowID, 1);
-	  break;
-        case SDL_WINDOWEVENT_LEAVE:
-	  if (state.game_code.game_window_moused)
-	    state.game_code.game_window_moused(event.window.windowID, 0);
-	  break;
-        case SDL_WINDOWEVENT_FOCUS_GAINED:
-	  if (state.game_code.game_window_focused)
-	    state.game_code.game_window_focused(event.window.windowID, 1);
-	  break;
-        case SDL_WINDOWEVENT_FOCUS_LOST:
-	  if (state.game_code.game_window_focused)
-	    state.game_code.game_window_focused(event.window.windowID, 0);
-	  break;
-        case SDL_WINDOWEVENT_CLOSE:
-	  if (state.game_code.game_window_closed)
-	    state.game_code.game_window_closed(event.window.windowID);
-	  break;
-        default:
-	  //SDL_Log("Window %d got unknown event %d",
-	  //        event.window.windowID, event.window.event);
-	  break;
-        }
+      case SDL_DISPLAYEVENT_DISCONNECTED:
 	break;
-
-	// Keyboard
-      case SDL_KEYDOWN:
-	if (state.game_code.game_keyboard_input)
-	  state.game_code.game_keyboard_input(event.key.windowID,
-					      BUTTON_PRESSED,
-					      event.key.repeat,
-					      event.key.keysym.scancode);
-	break;
-      case SDL_KEYUP:
-	if (state.game_code.game_keyboard_input)
-	  state.game_code.game_keyboard_input(event.key.windowID,
-					      BUTTON_RELEASED,
-					      event.key.repeat,
-					      event.key.keysym.scancode);
-	break;
-	// Unsupported Keyboard-related
-      case SDL_TEXTEDITING:
-      case SDL_TEXTINPUT:
-	break;
-      case SDL_KEYMAPCHANGED:
-	break;
-
-	// Mouse
-      case SDL_MOUSEMOTION:
-	if (state.game_code.game_mouse_motion)
-	  state.game_code.game_mouse_motion(event.motion.windowID,
-					    event.motion.which,
-					    event.motion.x,
-					    event.motion.y,
-					    event.motion.xrel,
-					    event.motion.yrel);
-	break;
-      case SDL_MOUSEBUTTONDOWN:
-	if (state.game_code.game_mouse_button)
-	  state.game_code.game_mouse_button(event.button.windowID,
-					    event.button.which,
-					    event.button.button,
-					    BUTTON_PRESSED,
-					    event.button.clicks,
-					    event.button.x,
-					    event.button.y);
-	break;
-      case SDL_MOUSEBUTTONUP:
-	if (state.game_code.game_mouse_button)
-	  state.game_code.game_mouse_button(event.button.windowID,
-					    event.button.which,
-					    event.button.button,
-					    BUTTON_RELEASED,
-					    event.button.clicks,
-					    event.button.x,
-					    event.button.y);
-	break;
-      case SDL_MOUSEWHEEL:
-	if (state.game_code.game_mouse_wheel)
-	  state.game_code.game_mouse_wheel(event.wheel.windowID,
-					   event.wheel.which,
-					   event.wheel.x,
-					   event.wheel.y,
-					   event.wheel.direction);
-	break;
-
-	// Joystick
-      case SDL_JOYAXISMOTION:
-	if (state.game_code.game_joy_axis_event)
-	  state.game_code.game_joy_axis_event(event.jaxis.which,
-					      event.jaxis.axis,
-					      event.jaxis.value);
-	break;
-      case SDL_JOYBALLMOTION:
-	if (state.game_code.game_joy_ball_event)
-	  state.game_code.game_joy_ball_event(event.jball.which,
-					      event.jball.ball,
-					      event.jball.xrel,
-					      event.jball.yrel);
-	break;
-      case SDL_JOYHATMOTION:
-	if (state.game_code.game_joy_hat_event)
-	  state.game_code.game_joy_hat_event(event.jhat.which,
-					     event.jhat.hat,
-					     event.jhat.value);
-	break;
-      case SDL_JOYBUTTONDOWN:
-	if (state.game_code.game_joy_button_event)
-	  state.game_code.game_joy_button_event(event.jbutton.which,
-						event.jbutton.button,
-						BUTTON_PRESSED);
-	break;
-      case SDL_JOYBUTTONUP:
-	if (state.game_code.game_joy_button_event)
-	  state.game_code.game_joy_button_event(event.jbutton.which,
-						event.jbutton.button,
-						BUTTON_RELEASED);
-	break;
-      case SDL_JOYDEVICEADDED:
-	if (state.game_code.game_joy_device_event)
-	  state.game_code.game_joy_device_event(event.jdevice.which, CONNECT);
-	break;
-      case SDL_JOYDEVICEREMOVED:
-	if (state.game_code.game_joy_device_event)
-	  state.game_code.game_joy_device_event(event.jdevice.which, DISCONNECT);
-	break;
-
-	// Controller
-      case SDL_CONTROLLERAXISMOTION:
-	if (state.game_code.game_controller_axis_event)
-	  state.game_code.game_controller_axis_event(event.caxis.which,
-						     event.caxis.axis,
-						     event.caxis.value);
-	break;
-      case SDL_CONTROLLERBUTTONDOWN:
-	if (state.game_code.game_controller_button_event)
-	  state.game_code.game_controller_button_event(event.cbutton.which,
-						       event.cbutton.button,
-						       BUTTON_PRESSED);
-	break;
-      case SDL_CONTROLLERBUTTONUP:
-	if (state.game_code.game_controller_button_event)
-	  state.game_code.game_controller_button_event(event.cbutton.which,
-						       event.cbutton.button,
-						       BUTTON_RELEASED);
-	break;
-      case SDL_CONTROLLERDEVICEADDED:
-	if (state.game_code.game_controller_device_event)
-	  state.game_code.game_controller_device_event(event.cdevice.which, CONNECT);
-	break;
-      case SDL_CONTROLLERDEVICEREMOVED:
-	if (state.game_code.game_controller_device_event)
-	  state.game_code.game_controller_device_event(event.cdevice.which, DISCONNECT);
-	break;
-      case SDL_CONTROLLERDEVICEREMAPPED:
-	break;
-      case SDL_CONTROLLERTOUCHPADDOWN:
-	if (state.game_code.game_controller_touchpad_event)
-	  state.game_code.game_controller_touchpad_event(event.ctouchpad.which,
-							 TOUCHPAD_DOWN,
-							 event.ctouchpad.finger,
-							 event.ctouchpad.x,
-							 event.ctouchpad.y,
-							 event.ctouchpad.pressure);
-	break;
-      case SDL_CONTROLLERTOUCHPADMOTION:
-	if (state.game_code.game_controller_touchpad_event)
-	  state.game_code.game_controller_touchpad_event(event.ctouchpad.which,
-							 TOUCHPAD_MOTION,
-							 event.ctouchpad.finger,
-							 event.ctouchpad.x,
-							 event.ctouchpad.y,
-							 event.ctouchpad.pressure);
-	break;
-      case SDL_CONTROLLERTOUCHPADUP:
-	if (state.game_code.game_controller_touchpad_event)
-	  state.game_code.game_controller_touchpad_event(event.ctouchpad.which,
-							 TOUCHPAD_UP,
-							 event.ctouchpad.finger,
-							 event.ctouchpad.x,
-							 event.ctouchpad.y,
-							 event.ctouchpad.pressure);
-	break;
-	break;
-      case SDL_CONTROLLERSENSORUPDATE:
-	if (state.game_code.game_controller_sensor_event)
-	  state.game_code.game_controller_sensor_event(event.csensor.which,
-						       event.csensor.sensor,
-						       event.csensor.data, 6);
-	break;
-
-	// Touch
-      case SDL_FINGERDOWN:
-	if (state.game_code.game_touch_finger_event)
-	  state.game_code.game_touch_finger_event(event.tfinger.windowID,
-						  event.tfinger.touchId,
-						  event.tfinger.fingerId,
-						  TOUCHPAD_DOWN,
-						  event.tfinger.x,
-						  event.tfinger.y,
-						  event.tfinger.dx,
-						  event.tfinger.dy,
-						  event.tfinger.pressure);
-	break;
-      case SDL_FINGERUP:
-	if (state.game_code.game_touch_finger_event)
-	  state.game_code.game_touch_finger_event(event.tfinger.windowID,
-						  event.tfinger.touchId,
-						  event.tfinger.fingerId,
-						  TOUCHPAD_UP,
-						  event.tfinger.x,
-						  event.tfinger.y,
-						  event.tfinger.dx,
-						  event.tfinger.dy,
-						  event.tfinger.pressure);
-	break;
-      case SDL_FINGERMOTION:
-	if (state.game_code.game_touch_finger_event)
-	  state.game_code.game_touch_finger_event(event.tfinger.windowID,
-						  event.tfinger.touchId,
-						  event.tfinger.fingerId,
-						  TOUCHPAD_MOTION,
-						  event.tfinger.x,
-						  event.tfinger.y,
-						  event.tfinger.dx,
-						  event.tfinger.dy,
-						  event.tfinger.pressure);
-	break;
-	// Unsupported touch-related
-      case SDL_DOLLARGESTURE:
-      case SDL_DOLLARRECORD:
-      case SDL_MULTIGESTURE:
-	break;
-
-	// Drops
-      case SDL_DROPFILE:
-	if (state.game_code.game_drop_event)
-	  state.game_code.game_drop_event(event.drop.windowID,
-					  DROP_FILE,
-					  event.drop.file);
-	SDL_free(event.drop.file);
-	break;
-      case SDL_DROPTEXT:
-	if (state.game_code.game_drop_event)
-	  state.game_code.game_drop_event(event.drop.windowID,
-					  DROP_TEXT,
-					  event.drop.file);
-	SDL_free(event.drop.file);
-	break;
-      case SDL_DROPBEGIN:
-	if (state.game_code.game_drop_event)
-	  state.game_code.game_drop_event(event.drop.windowID,
-					  DROP_BEGIN,
-					  event.drop.file);
-	SDL_free(event.drop.file);
-	break;
-      case SDL_DROPCOMPLETE:
-	if (state.game_code.game_drop_event)
-	  state.game_code.game_drop_event(event.drop.windowID,
-					  DROP_COMPLETE,
-					  event.drop.file);
-	SDL_free(event.drop.file);
-	break;
-
-	// Audio Devices
-      case SDL_AUDIODEVICEADDED:
-	if (state.game_code.game_audio_device_event)
-	  state.game_code.game_audio_device_event(event.adevice.which,
-						  CONNECT,
-						  event.adevice.iscapture);
-	break;
-      case SDL_AUDIODEVICEREMOVED:
-	if (state.game_code.game_audio_device_event)
-	  state.game_code.game_audio_device_event(event.adevice.which,
-						  DISCONNECT,
-						  event.adevice.iscapture);
-	break;
-
-	// Sensor 
-      case SDL_SENSORUPDATE:
-	if (state.game_code.game_sensor_event)
-	  state.game_code.game_sensor_event(event.sensor.which,
-					    event.sensor.type,
-					    event.sensor.data, 6);
-	break;
-	
-	// User event
-      case SDL_USEREVENT:
-	if (state.game_code.game_user_event)
-	  state.game_code.game_user_event(event.user.windowID,
-					  event.user.type,
-					  event.user.code,
-					  event.user.data1,
-					  event.user.data2);
-	break;
-	
-	// Unsupported for now
-      case SDL_RENDER_TARGETS_RESET:
-      case SDL_RENDER_DEVICE_RESET:
-      case SDL_CLIPBOARDUPDATE:
-      case SDL_LOCALECHANGED:
+      case SDL_DISPLAYEVENT_ORIENTATION:
 	break;
       }
+      break;
+	
+    case SDL_WINDOWEVENT:
+      switch (event.window.event) {
+      case SDL_WINDOWEVENT_SHOWN:
+	if (state.game_code.game_window_shown)
+	  state.game_code.game_window_shown(event.window.windowID, 1);
+	break;
+      case SDL_WINDOWEVENT_HIDDEN:
+	if (state.game_code.game_window_shown)
+	  state.game_code.game_window_shown(event.window.windowID, 0);
+	break;
+      case SDL_WINDOWEVENT_MOVED:
+	if (state.game_code.game_window_moved) {
+	  state.screen_x = event.window.data1;
+	  state.screen_y = event.window.data2;
+	  state.game_code.game_window_moved(event.window.windowID,
+					    event.window.data1,
+					    event.window.data2);
+	}
+	break;
+      case SDL_WINDOWEVENT_RESIZED:
+	if (state.game_code.game_window_resized){
+	  state.screen_w = event.window.data1;
+	  state.screen_h = event.window.data2;
+	  state.game_code.game_window_resized(event.window.windowID,
+					      event.window.data1,
+					      event.window.data2);
+	  resize_window();
+	}
+	break;
+      case SDL_WINDOWEVENT_MINIMIZED:
+	if (state.game_code.game_window_minmaxed)
+	  state.game_code.game_window_minmaxed(event.window.windowID, 1);
+	break;
+      case SDL_WINDOWEVENT_MAXIMIZED:
+	if (state.game_code.game_window_minmaxed)
+	  state.game_code.game_window_minmaxed(event.window.windowID, 0);
+	break;
+      case SDL_WINDOWEVENT_ENTER:
+	if (state.game_code.game_window_moused)
+	  state.game_code.game_window_moused(event.window.windowID, 1);
+	break;
+      case SDL_WINDOWEVENT_LEAVE:
+	if (state.game_code.game_window_moused)
+	  state.game_code.game_window_moused(event.window.windowID, 0);
+	break;
+      case SDL_WINDOWEVENT_FOCUS_GAINED:
+	if (state.game_code.game_window_focused)
+	  state.game_code.game_window_focused(event.window.windowID, 1);
+	break;
+      case SDL_WINDOWEVENT_FOCUS_LOST:
+	if (state.game_code.game_window_focused)
+	  state.game_code.game_window_focused(event.window.windowID, 0);
+	break;
+      case SDL_WINDOWEVENT_CLOSE:
+	if (state.game_code.game_window_closed)
+	  state.game_code.game_window_closed(event.window.windowID);
+	break;
+      default:
+	//SDL_Log("Window %d got unknown event %d",
+	//        event.window.windowID, event.window.event);
+	break;
+      }
+      break;
+
+      // Keyboard
+    case SDL_KEYDOWN:
+      if (state.game_code.game_keyboard_input)
+	state.game_code.game_keyboard_input(event.key.windowID,
+					    BUTTON_PRESSED,
+					    event.key.repeat,
+					    event.key.keysym.scancode);
+      break;
+    case SDL_KEYUP:
+      if (state.game_code.game_keyboard_input)
+	state.game_code.game_keyboard_input(event.key.windowID,
+					    BUTTON_RELEASED,
+					    false,
+					    event.key.keysym.scancode);
+      break;
+      // Unsupported Keyboard-related
+    case SDL_TEXTEDITING:
+    case SDL_TEXTINPUT:
+      break;
+    case SDL_KEYMAPCHANGED:
+      break;
+
+      // Mouse
+    case SDL_MOUSEMOTION:
+      if (state.game_code.game_mouse_motion)
+	state.game_code.game_mouse_motion(event.motion.windowID,
+					  event.motion.which,
+					  event.motion.x,
+					  event.motion.y,
+					  event.motion.xrel,
+					  event.motion.yrel);
+      break;
+    case SDL_MOUSEBUTTONDOWN:
+      if (state.game_code.game_mouse_button)
+	state.game_code.game_mouse_button(event.button.windowID,
+					  event.button.which,
+					  event.button.button,
+					  BUTTON_PRESSED,
+					  event.button.clicks,
+					  event.button.x,
+					  event.button.y);
+      break;
+    case SDL_MOUSEBUTTONUP:
+      if (state.game_code.game_mouse_button)
+	state.game_code.game_mouse_button(event.button.windowID,
+					  event.button.which,
+					  event.button.button,
+					  BUTTON_RELEASED,
+					  event.button.clicks,
+					  event.button.x,
+					  event.button.y);
+      break;
+    case SDL_MOUSEWHEEL:
+      if (state.game_code.game_mouse_wheel)
+	state.game_code.game_mouse_wheel(event.wheel.windowID,
+					 event.wheel.which,
+					 event.wheel.x,
+					 event.wheel.y,
+					 event.wheel.direction);
+      break;
+
+      // Joystick
+    case SDL_JOYAXISMOTION:
+      if (state.game_code.game_joy_axis_event)
+	state.game_code.game_joy_axis_event(event.jaxis.which,
+					    event.jaxis.axis,
+					    event.jaxis.value);
+      break;
+    case SDL_JOYBALLMOTION:
+      if (state.game_code.game_joy_ball_event)
+	state.game_code.game_joy_ball_event(event.jball.which,
+					    event.jball.ball,
+					    event.jball.xrel,
+					    event.jball.yrel);
+      break;
+    case SDL_JOYHATMOTION:
+      if (state.game_code.game_joy_hat_event)
+	state.game_code.game_joy_hat_event(event.jhat.which,
+					   event.jhat.hat,
+					   event.jhat.value);
+      break;
+    case SDL_JOYBUTTONDOWN:
+      if (state.game_code.game_joy_button_event)
+	state.game_code.game_joy_button_event(event.jbutton.which,
+					      event.jbutton.button,
+					      BUTTON_PRESSED);
+      break;
+    case SDL_JOYBUTTONUP:
+      if (state.game_code.game_joy_button_event)
+	state.game_code.game_joy_button_event(event.jbutton.which,
+					      event.jbutton.button,
+					      BUTTON_RELEASED);
+      break;
+    case SDL_JOYDEVICEADDED:
+      if (state.game_code.game_joy_device_event)
+	state.game_code.game_joy_device_event(event.jdevice.which, CONNECT);
+      break;
+    case SDL_JOYDEVICEREMOVED:
+      if (state.game_code.game_joy_device_event)
+	state.game_code.game_joy_device_event(event.jdevice.which, DISCONNECT);
+      break;
+
+      // Controller
+    case SDL_CONTROLLERAXISMOTION:
+      if (state.game_code.game_controller_axis_event)
+	state.game_code.game_controller_axis_event(event.caxis.which,
+						   event.caxis.axis,
+						   event.caxis.value);
+      break;
+    case SDL_CONTROLLERBUTTONDOWN:
+      if (state.game_code.game_controller_button_event)
+	state.game_code.game_controller_button_event(event.cbutton.which,
+						     event.cbutton.button,
+						     BUTTON_PRESSED);
+      break;
+    case SDL_CONTROLLERBUTTONUP:
+      if (state.game_code.game_controller_button_event)
+	state.game_code.game_controller_button_event(event.cbutton.which,
+						     event.cbutton.button,
+						     BUTTON_RELEASED);
+      break;
+    case SDL_CONTROLLERDEVICEADDED:
+      if (state.game_code.game_controller_device_event)
+	state.game_code.game_controller_device_event(event.cdevice.which, CONNECT);
+      break;
+    case SDL_CONTROLLERDEVICEREMOVED:
+      if (state.game_code.game_controller_device_event)
+	state.game_code.game_controller_device_event(event.cdevice.which, DISCONNECT);
+      break;
+    case SDL_CONTROLLERDEVICEREMAPPED:
+      break;
+    case SDL_CONTROLLERTOUCHPADDOWN:
+      if (state.game_code.game_controller_touchpad_event)
+	state.game_code.game_controller_touchpad_event(event.ctouchpad.which,
+						       TOUCHPAD_DOWN,
+						       event.ctouchpad.finger,
+						       event.ctouchpad.x,
+						       event.ctouchpad.y,
+						       event.ctouchpad.pressure);
+      break;
+    case SDL_CONTROLLERTOUCHPADMOTION:
+      if (state.game_code.game_controller_touchpad_event)
+	state.game_code.game_controller_touchpad_event(event.ctouchpad.which,
+						       TOUCHPAD_MOTION,
+						       event.ctouchpad.finger,
+						       event.ctouchpad.x,
+						       event.ctouchpad.y,
+						       event.ctouchpad.pressure);
+      break;
+    case SDL_CONTROLLERTOUCHPADUP:
+      if (state.game_code.game_controller_touchpad_event)
+	state.game_code.game_controller_touchpad_event(event.ctouchpad.which,
+						       TOUCHPAD_UP,
+						       event.ctouchpad.finger,
+						       event.ctouchpad.x,
+						       event.ctouchpad.y,
+						       event.ctouchpad.pressure);
+      break;
+      break;
+    case SDL_CONTROLLERSENSORUPDATE:
+      if (state.game_code.game_controller_sensor_event)
+	state.game_code.game_controller_sensor_event(event.csensor.which,
+						     event.csensor.sensor,
+						     event.csensor.data, 6);
+      break;
+
+      // Touch
+    case SDL_FINGERDOWN:
+      if (state.game_code.game_touch_finger_event)
+	state.game_code.game_touch_finger_event(event.tfinger.windowID,
+						event.tfinger.touchId,
+						event.tfinger.fingerId,
+						TOUCHPAD_DOWN,
+						event.tfinger.x,
+						event.tfinger.y,
+						event.tfinger.dx,
+						event.tfinger.dy,
+						event.tfinger.pressure);
+      break;
+    case SDL_FINGERUP:
+      if (state.game_code.game_touch_finger_event)
+	state.game_code.game_touch_finger_event(event.tfinger.windowID,
+						event.tfinger.touchId,
+						event.tfinger.fingerId,
+						TOUCHPAD_UP,
+						event.tfinger.x,
+						event.tfinger.y,
+						event.tfinger.dx,
+						event.tfinger.dy,
+						event.tfinger.pressure);
+      break;
+    case SDL_FINGERMOTION:
+      if (state.game_code.game_touch_finger_event)
+	state.game_code.game_touch_finger_event(event.tfinger.windowID,
+						event.tfinger.touchId,
+						event.tfinger.fingerId,
+						TOUCHPAD_MOTION,
+						event.tfinger.x,
+						event.tfinger.y,
+						event.tfinger.dx,
+						event.tfinger.dy,
+						event.tfinger.pressure);
+      break;
+      // Unsupported touch-related
+    case SDL_DOLLARGESTURE:
+    case SDL_DOLLARRECORD:
+    case SDL_MULTIGESTURE:
+      break;
+
+      // Drops
+    case SDL_DROPFILE:
+      if (state.game_code.game_drop_event)
+	state.game_code.game_drop_event(event.drop.windowID,
+					DROP_FILE,
+					event.drop.file);
+      SDL_free(event.drop.file);
+      break;
+    case SDL_DROPTEXT:
+      if (state.game_code.game_drop_event)
+	state.game_code.game_drop_event(event.drop.windowID,
+					DROP_TEXT,
+					event.drop.file);
+      SDL_free(event.drop.file);
+      break;
+    case SDL_DROPBEGIN:
+      if (state.game_code.game_drop_event)
+	state.game_code.game_drop_event(event.drop.windowID,
+					DROP_BEGIN,
+					event.drop.file);
+      SDL_free(event.drop.file);
+      break;
+    case SDL_DROPCOMPLETE:
+      if (state.game_code.game_drop_event)
+	state.game_code.game_drop_event(event.drop.windowID,
+					DROP_COMPLETE,
+					event.drop.file);
+      SDL_free(event.drop.file);
+      break;
+
+      // Audio Devices
+    case SDL_AUDIODEVICEADDED:
+      if (state.game_code.game_audio_device_event)
+	state.game_code.game_audio_device_event(event.adevice.which,
+						CONNECT,
+						event.adevice.iscapture);
+      break;
+    case SDL_AUDIODEVICEREMOVED:
+      if (state.game_code.game_audio_device_event)
+	state.game_code.game_audio_device_event(event.adevice.which,
+						DISCONNECT,
+						event.adevice.iscapture);
+      break;
+
+      // Sensor 
+    case SDL_SENSORUPDATE:
+      if (state.game_code.game_sensor_event)
+	state.game_code.game_sensor_event(event.sensor.which,
+					  event.sensor.type,
+					  event.sensor.data, 6);
+      break;
+	
+      // User event
+    case SDL_USEREVENT:
+      if (state.game_code.game_user_event)
+	state.game_code.game_user_event(event.user.windowID,
+					event.user.type,
+					event.user.code,
+					event.user.data1,
+					event.user.data2);
+      break;
+	
+      // Unsupported for now
+    case SDL_RENDER_TARGETS_RESET:
+    case SDL_RENDER_DEVICE_RESET:
+    case SDL_CLIPBOARDUPDATE:
+    case SDL_LOCALECHANGED:
+      break;
+    }
+  }
+}
+
+void Render()
+{
+  glClear(GL_COLOR_BUFFER_BIT);
+  glClearColor(state.bg_color[0], state.bg_color[1], state.bg_color[2], state.bg_color[3]);
+  state.game_code.game_render();
+  for (int w = 0; w < state.window_count; w++) {
+    SDL_GL_SwapWindow(state.windows[w]);
+  }
+}
+
+void CodeReload()
+{
+  time_t new_dll_file_time = GetFileWriteTime(GAME_LIB);
+  if(new_dll_file_time > state.game_code.last_file_time) {
+    UnloadGameCode(&state.game_code);
+    SDL_Delay(200);
+    state.game_code = LoadGameCode(GAME_LIB);
+    state.game_code.game_init(state.game_memory, GetPlatformAPI(), SCREEN_WIDTH, SCREEN_HEIGHT);
+  }
+}
+
+void GameLoop()
+{
+  uint8_t quit = 0;
+  double t = 0.0;
+  double dt = 1/60.0f;
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  double currentTime = ts.tv_sec;
+  
+  while(!quit) {
+    SendInput();
+
+    clock_gettime(CLOCK_REALTIME, &ts);
+    double newTime = ts.tv_sec;
+    double frameTime = newTime - currentTime;
+    currentTime = newTime;
+
+    while (frameTime > 0.0) {
+      float deltaTime = MIN(frameTime, dt);
+      state.game_code.game_update(t, deltaTime);
+      frameTime -= deltaTime;
+      t += deltaTime;
     }
 
-    // If there are servers, 
-    
-    state.game_code.game_update(1.0f/60.0f);
-    
-    glClear(GL_COLOR_BUFFER_BIT);
-    glClearColor(state.bg_color[0], state.bg_color[1], state.bg_color[2], state.bg_color[3]);
-    state.game_code.game_render();
-    for (int w = 0; w < state.window_count; w++) {
-      SDL_GL_SwapWindow(state.windows[w]);
-    }
+    Render();
     
     // RELOAD
-    time_t new_dll_file_time = GetFileWriteTime(GAME_LIB);
-    if(new_dll_file_time > state.game_code.last_file_time) {
-      UnloadGameCode(&state.game_code);
-      SDL_Delay(200);
-      state.game_code = LoadGameCode(GAME_LIB);
-      state.game_code.game_init(state.game_memory, GetPlatformAPI(), SCREEN_WIDTH, SCREEN_HEIGHT);
-    }
-    
-    SDL_Delay(1);
+    CodeReload();
   }
 }
 

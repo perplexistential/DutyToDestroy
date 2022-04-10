@@ -21,10 +21,9 @@ typedef struct {
 
 typedef struct {
   EntityKind kind;
-
-  // TODO: object pool etc with pointers?
   Position position;
   DrawComponent *draw;
+  PhysicsComponent *phys;
 } Entity;
 
 #endif
