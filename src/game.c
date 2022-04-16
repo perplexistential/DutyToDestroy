@@ -7,12 +7,15 @@
 #include <math.h>
 #include <sys/types.h>
 #include "components.h"
+#include "coordinates.h"
 #include "entity.h"
 #include "gunsandammo.h"
 #include "input.h"
 #include "shared.h"
 #include "game.h"
 #include "state.h"
+
+#define M_PI 3.14159265358979323846
 
 #define MAX_TOWERS 1
 #define MAX_TURRETS 3
@@ -41,12 +44,10 @@ typedef struct
   DrawComponent tower_draw_component;
   DrawComponent turret_draw_component;
   DrawComponent bullet_draw_component;
-  PhysicsComponent bullet_phys_component;
   AmmoKind ammo0;
   Bullet bullet0;
   DrawComponent unit_draw_component;
   
-
   KeyboardAndMouseInputHandler kbm_input_handler;
   ControllerInputHandler controller_input_handler;
 
@@ -57,26 +58,21 @@ typedef struct
 static GameState *state;
 
 static DrawComponent tower_draw_component = {
-    .dim = {.x = 50, .y = 50},
+    .dim = {.x = 100, .y = 100},
     .color = {.r = 0.886f, .g = 0.843f, .b = 0.773f, .a = 1.0f},
     .rotation = {.x = 0, .y = 0},
 };
 
 static DrawComponent turret_draw_component = {
-    .dim = {.x = 25, .y = 25},
+    .dim = {.x = 50, .y = 50},
     .color = {.r = 0.671f, .g = 0.486f, .b = 0.322f, .a = 1.0f},
     .rotation = {.x = 0, .y = 0},
 };
 
 static DrawComponent bullet_draw_component = {
-    .dim = {.x = 5, .y = 5},
+    .dim = {.x = 10, .y = 10},
     .color = {.r = 0.663f, .g = 0.682f, .b = 0.471f, .a = 1.0f},
     .rotation = {.x = 0, .y = 0},
-};
-
-static PhysicsComponent bullet_phys_component = {
-    .accel = {0},
-    .veloc = {1.0f},
 };
 
 /*
@@ -96,7 +92,7 @@ INPUT_COMMAND(pause_game)
 
 INPUT_COMMAND(next_turret)
 {
-  if (state->current_turret == state->turret_count)
+  if (state->current_turret >= state->turret_count)
     state->current_turret = 0;
   else
     state->current_turret++;
@@ -105,21 +101,21 @@ INPUT_COMMAND(next_turret)
 INPUT_COMMAND(prev_turret)
 {
   if (state->current_turret == 0)
-    state->current_turret = state->turret_count;
+    state->current_turret = state->turret_count-1;
   else
     state->current_turret--;
 }
 
 INPUT_COMMAND(rotate_left) {
   Turret *t = (Turret *)e;
-  t->rotation--;
-  t->rotation = MAX(t->rotation, 0.0f);
+  t->rotation.r--;
+  t->rotation.r = MAX(t->rotation.r, 0.0f);
 }
 
 INPUT_COMMAND(rotate_right) {
   Turret *t = (Turret *)e;
-  t->rotation++;
-  t->rotation = MIN(t->rotation, 360.0f);
+  t->rotation.r++;
+  t->rotation.r = MIN(t->rotation.r, 360.0f);
 }
 
 INPUT_COMMAND(increase_spread) {
@@ -142,9 +138,9 @@ HANDLE_INPUT(controller_handler) {
 }
 
 static const InputHandler ih_kbm = {.kind = INPUT_KIND_KEYBOARD,
-                              .handleInput = keyboard_and_mouse_handler};
+				    .handleInput = keyboard_and_mouse_handler};
 static const InputHandler ih_cntlr = {.kind = INPUT_KIND_CONTROLLER,
-                                .handleInput = controller_handler};
+				      .handleInput = controller_handler};
 
 
 static const KeyboardAndMouseInputHandler kbm_input_handler = {
@@ -213,9 +209,26 @@ bool checkCollision(BoundingBox *a, BoundingBox *b){
   return true;
 }
 
-float speed(float accel, float dt, float velocity)
+float speed(float dt, float accel, float velocity)
 {
   return accel * (dt * velocity);
+}
+
+void cartesianToPolar(Position *c, Polar *p) {
+  p->r = sqrtf(powf(c->x, 2.0f) + powf(c->y, 2.0f));
+
+  // TODO: Do we not already know the angle of rotation?
+  if (c->x != 0 && c->y != 0) {
+    p->theta = atanf(c->y/c->x);
+    p->theta = 180.0f * p->theta/M_PI;
+  } else {
+    p->theta = 0;
+  }
+}
+
+void polarToCartesian(Vec2D *c, Polar *p, Polar *parent) {
+  c->x = p->r * cosf(p->theta + parent->theta);
+  c->y = p->r * sinf(p->theta + parent->theta);
 }
 
 EMIT_BULLET(shoot_bullet) {
@@ -224,8 +237,14 @@ EMIT_BULLET(shoot_bullet) {
   Bullet *next = &gun->clip->pool[gun->num_particles];
   memcpy(&next->e.position, &gun->position, sizeof(Position));
   next->e.draw = &state->bullet_draw_component;
+  memset(&gun->clip->phys[gun->num_particles], 0, sizeof(PhysicsComponent));
+  next->e.phys = &gun->clip->phys[gun->num_particles];
   next->ammo = gun->bullet->ammo;
   gun->num_particles++;
+  memset(&next->e.phys->accel, 0, sizeof(Vec2D));
+  next->e.phys->accel.x = 1.2f;
+  next->e.phys->accel.y = 1.2f;
+  polarToCartesian(&next->e.phys->veloc, &gun->trajectory, gun->parent_rotation);
   return next;
 }
 
@@ -259,23 +278,28 @@ UPDATE_BULLETS(update_bullets) {
     if ((bb_next_y.position.y < state->screen_h/-2.0f) ||
 	(bb_next_y.position.y + bb_next_y.dim->y > state->screen_h/2.0f)) {
       reclaim_bullet(gun, b);
-    } 
-    b->e.position.x += speed(b->e.phys->accel.x, dt, b->e.phys->veloc.x);
-    b->e.position.y += speed(b->e.phys->accel.y, dt, b->e.phys->veloc.y);
+    }
     // calculate next position
+    b->e.position.x += speed(dt, b->e.phys->accel.x, b->e.phys->veloc.x);
+    b->e.position.y += speed(dt, b->e.phys->accel.y, b->e.phys->veloc.y);
   }
 }
 
-void init_turret(Turret *t, Position *pos)
+void init_turret(Turret *t, Position *pos, float rotation)
 {
   Entity *e = (Entity *)t;
   e->kind = TURRET;
   e->draw = &state->turret_draw_component;
   e->position.x = pos->x;
   e->position.y = pos->y;
+  memset(&t->rotation, 0, sizeof(Polar));
+  t->rotation.theta = rotation;
   t->gun.bullet = &state->bullet0;
   t->gun.num_particles = 0;
-  t->gun.rate = 0.25f;
+  t->gun.rate = 5.0f;
+  t->gun.trajectory.r = 20.0f;
+  t->gun.trajectory.theta = 0;
+  t->gun.parent_rotation = &t->rotation;
   t->gun.clip = &state->clip[state->turret_count];
   t = &state->turret[state->turret_count];
   state->turret_count++;
@@ -283,46 +307,64 @@ void init_turret(Turret *t, Position *pos)
 
 // Scenes
 SCENE_INIT(null_scene_init) {}
-SCENE_UPDATE(null_scene_update) { state->scene = &state->scenes.StartingScene; }
+SCENE_UPDATE(null_scene_update) {  
+  state->scenes.StartingScene.init();
+  state->scene = &state->scenes.StartingScene;
+}
+
 SCENE_INPUT(null_scene_input) {}
 SCENE_RENDER(null_scene_render) {}
 
-SCENE_UPDATE(starting_scene) { state->scene = &state->scenes.GoingScene; }
+SCENE_UPDATE(starting_scene) {
+  // TODO: Logos and startup
+  state->scenes.GoingScene.init();
+  state->scene = &state->scenes.GoingScene;
+}
 
 SCENE_UPDATE(ready_scene) { return; }
 
-SCENE_UPDATE(going_scene) {
+SCENE_INIT(going_scene_init) {
   Position tower_half;
   Position pos;
   Entity *t = NULL;
   
-  if (!state->init_done) {
-    state->init_done = 1;
-    state->turret_count = 0;
+  state->init_done = 1;
+  state->turret_count = 0;
+
+  // Place tower
+  t = (Entity *)&state->tower;
+  t->draw = &state->tower_draw_component;
+  tower_half.x = t->draw->dim.x/2.0f;
+  tower_half.y = t->draw->dim.y/2.0f;
+  t->position.x = -tower_half.x;
+  t->position.y = -tower_half.y;
     
-    // Place tower
-    t = (Entity *)&state->tower;
-    t->draw = &state->tower_draw_component;
-    tower_half.x = t->draw->dim.x/2.0f;
-    tower_half.y = t->draw->dim.y/2.0f;
-    t->position.x = -tower_half.x;
-    t->position.y = -tower_half.y;
-    
-    // Place turrets
-    /*
+  // Place turrets
+  /*
     Position turret_half;
     turret_half.x = state->turret_draw_component.dim.x/2.0f;
     turret_half.y = state->turret_draw_component.dim.x/2.0f;
-    */
-    pos.x = -tower_half.x;
-    pos.y = tower_half.y;
-    init_turret(&state->turret[0], &pos);
-    pos.x = tower_half.x;
-    pos.y = tower_half.y;
-    init_turret(&state->turret[1], &pos);
-    pos.x = 0;
-    pos.y = -tower_half.y;
-    init_turret(&state->turret[2], &pos);
+  */
+  pos.x = -tower_half.x - turret_draw_component.dim.x;
+  pos.y = tower_half.y;
+  init_turret(&state->turret[0], &pos, 135.0f);
+  pos.x = tower_half.x;
+  pos.y = tower_half.y;
+  init_turret(&state->turret[1], &pos, 45.0f);
+  pos.x = - turret_draw_component.dim.x/2.0f;
+  pos.y = -tower_half.y - turret_draw_component.dim.y;
+  init_turret(&state->turret[2], &pos, 270.0f);
+}
+
+SCENE_UPDATE(going_scene) {
+  for (int t=0; t<state->turret_count; t++) {
+    Gun *gun = &state->turret[t].gun;
+    gun->last_fire += dt;
+    if (gun->last_fire >= gun->rate) {
+      shoot_bullet(gun);
+      gun->last_fire -= gun->rate;
+    }	
+    update_bullets(gun, dt);
   }
 }
 
@@ -350,6 +392,7 @@ SCENE_RENDER(going_scene_render) {
   // Bullets
   for (int i=0; i < state->turret_count; i++){
     for (int b=0; b < state->turret[i].gun.num_particles; b++) {
+      float turret_rotation = state->turret[i].rotation.theta;
       state->api.PlatformDrawBox(state->clip[i].pool[b].e.position.x,
 				 state->clip[i].pool[b].e.position.y,
 				 state->clip[i].pool[b].e.draw->dim.x,
@@ -358,12 +401,13 @@ SCENE_RENDER(going_scene_render) {
 				 state->clip[i].pool[b].e.draw->color.g,
 				 state->clip[i].pool[b].e.draw->color.b,
 				 state->clip[i].pool[b].e.draw->color.a,
-				 0);
+				 turret_rotation);
     }
   }
   // Turrets
   for (int i=0; i<state->turret_count; i++){
     e = ((Entity *)&state->turret[i]);
+    float turret_rotation = state->turret[i].rotation.theta;
     state->api.PlatformDrawBox(e->position.x,
 			       e->position.y,
 			       e->draw->dim.x,
@@ -372,7 +416,7 @@ SCENE_RENDER(going_scene_render) {
 			       e->draw->color.g,
 			       e->draw->color.b,
 			       e->draw->color.a,
-			       state->turret[i].rotation);
+			       turret_rotation);
   }
   // Towers
   /*
@@ -421,7 +465,7 @@ static const Scene STARTING_SCENE = {.init = null_scene_init,
                                      .render = null_scene_render,
                                      .update = starting_scene};
 
-static const Scene GOING_SCENE = {.init = null_scene_init,
+static const Scene GOING_SCENE = {.init = going_scene_init,
                                   .input = going_scene_input,
                                   .update = going_scene,
                                   .render = going_scene_render};
@@ -443,7 +487,6 @@ extern GAME_INIT(GameInit)
   memcpy(&state->tower_draw_component, &tower_draw_component, sizeof(tower_draw_component));
   memcpy(&state->turret_draw_component, &turret_draw_component, sizeof(turret_draw_component));
   memcpy(&state->bullet_draw_component, &bullet_draw_component, sizeof(bullet_draw_component));
-  memcpy(&state->bullet_phys_component, &bullet_phys_component, sizeof(bullet_phys_component));
 
   // state->api.PlatformSetBackgroundColor(0.545f, 0.525f, 0.298f, 1.0f);
   state->api.PlatformSetBackgroundColor(0.369f, 0.333f, 0.18f, 1.0f);

@@ -3,6 +3,12 @@
 
 #include "entity.h"
 
+typedef enum {
+  INPUT_KIND_KEYBOARD,
+  INPUT_KIND_CONTROLLER,
+  INPUT_KIND_JOYSTICK, // Maybe later
+} InputKind;
+
 typedef struct {
   
 } InputEvent;
@@ -12,12 +18,6 @@ typedef INPUT_COMMAND(InputCommandFn);
 
 #define HANDLE_INPUT(n) InputCommandFn* n()
 typedef HANDLE_INPUT(HandleInputFn);
-
-typedef enum {
-  INPUT_KIND_KEYBOARD,
-  INPUT_KIND_CONTROLLER,
-  INPUT_KIND_JOYSTICK, // Maybe later
-} InputKind;
 
 typedef struct {
   InputKind kind;

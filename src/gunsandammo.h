@@ -3,6 +3,7 @@
 
 #include "components.h"
 #include "entity.h"
+#include "coordinates.h"
 
 typedef struct {
   float damage;
@@ -18,10 +19,14 @@ typedef struct {
 
 typedef struct {
   Bullet pool[MAX_PARTICLES];
+  PhysicsComponent phys[MAX_PARTICLES];
 } ClipComponent;
 
 typedef struct {
+  Polar *parent_rotation;
+  Polar trajectory;
   float rate;
+  float last_fire;
   int num_particles;
   Position position;
   ClipComponent *clip;
@@ -41,7 +46,7 @@ typedef struct {
   Entity e;
   float health;
   float spread;
-  float rotation;
+  Polar rotation;
   Gun gun;
   ShootGun *shoot;
   ReclaimBullet *reclaim;

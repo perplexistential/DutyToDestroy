@@ -6,6 +6,7 @@
 #include "state.h"
 #include "components.h"
 #include "gunsandammo.h"
+#include "coordinates.h"
 
 typedef struct Level {
   int tower_count;

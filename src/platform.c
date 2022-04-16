@@ -394,23 +394,29 @@ PLATFORM_SET_BACKGROUND_COLOR(SetBackgroundColor)
 
 PLATFORM_DRAW_BOX(DrawBox)
 {
+  glPushMatrix();
+  
+  glColor4f(r, g, b, a);
+  glTranslatef(1, 1, -1);
+
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glEnable(GL_BLEND);
 
-  glPushMatrix();
   glRotatef(rotation, 0.0f, 0.0f, 1.0f);
-  glColor4f(r, g, b, a);
-  glRectf(x, y, x+width, y+height);
-  /*
+
+  glPushMatrix();
+  //glRectf(x, y, x+width, y+height);
   glBegin(GL_QUADS);
     glVertex2f(x, y);
     glVertex2f(x+width, y);
     glVertex2f(x+width, y+height);
     glVertex2f(x, y+height);
   glEnd();
-  */
   glPopMatrix();
+  
   glDisable(GL_BLEND);
+
+  glPopMatrix();
 }
 
 void opengl_load_texture(int textureIndex, const char *imagePath)
@@ -495,7 +501,8 @@ void resize_window()
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
   glOrtho(-state.screen_w/2.0f, state.screen_w/2.0f,
-	  -state.screen_h/2.0f, state.screen_h/2.0f, 0.0f, 1.0f);
+	  -state.screen_h/2.0f, state.screen_h/2.0f,
+	  -1.0f, 1.0f);
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
 }
@@ -1271,7 +1278,12 @@ void Render()
 {
   glClear(GL_COLOR_BUFFER_BIT);
   glClearColor(state.bg_color[0], state.bg_color[1], state.bg_color[2], state.bg_color[3]);
+  glLoadIdentity();
+  glPushMatrix();
+  glLoadIdentity();
   state.game_code.game_render();
+  glPopMatrix();
+  glFlush();
   for (int w = 0; w < state.window_count; w++) {
     SDL_GL_SwapWindow(state.windows[w]);
   }
@@ -1298,20 +1310,23 @@ void GameLoop()
   double currentTime = ts.tv_sec;
   
   while(!quit) {
-    SendInput();
-
     clock_gettime(CLOCK_REALTIME, &ts);
     double newTime = ts.tv_sec;
     double frameTime = newTime - currentTime;
     currentTime = newTime;
 
     while (frameTime > 0.0) {
+      SendInput();
       float deltaTime = MIN(frameTime, dt);
       state.game_code.game_update(t, deltaTime);
       frameTime -= deltaTime;
       t += deltaTime;
+      printf(".");
+      fflush(stdout);
     }
 
+    printf("|");
+    fflush(stdout);
     Render();
     
     // RELOAD
