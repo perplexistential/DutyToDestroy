@@ -22,8 +22,10 @@ typedef struct {
   PhysicsComponent phys[MAX_PARTICLES];
 } ClipComponent;
 
+
 typedef struct {
   Polar *parent_rotation;
+  Position *parent_position;
   Polar trajectory;
   float rate;
   float last_fire;
@@ -42,7 +44,7 @@ typedef RECLAIM_BULLET(ReclaimBullet);
 #define UPDATE_BULLETS(n) void n(Gun *gun, float dt)
 typedef UPDATE_BULLETS(UpdateBullets);
 
-typedef struct {
+typedef struct Turret {
   Entity e;
   float health;
   float spread;

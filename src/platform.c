@@ -402,7 +402,7 @@ PLATFORM_DRAW_BOX(DrawBox)
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glEnable(GL_BLEND);
 
-  glRotatef(rotation, 0.0f, 0.0f, 1.0f);
+  //glRotatef(rotation, 0.0f, 0.0f, 1.0f);
 
   glPushMatrix();
   //glRectf(x, y, x+width, y+height);
@@ -1321,13 +1321,8 @@ void GameLoop()
       state.game_code.game_update(t, deltaTime);
       frameTime -= deltaTime;
       t += deltaTime;
-      printf(".");
-      fflush(stdout);
+      Render();
     }
-
-    printf("|");
-    fflush(stdout);
-    Render();
     
     // RELOAD
     CodeReload();

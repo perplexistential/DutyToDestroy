@@ -96,6 +96,7 @@ INPUT_COMMAND(next_turret)
     state->current_turret = 0;
   else
     state->current_turret++;
+  printf("change turret to (%d)\n", state->current_turret);
 }
 
 INPUT_COMMAND(prev_turret)
@@ -104,26 +105,37 @@ INPUT_COMMAND(prev_turret)
     state->current_turret = state->turret_count-1;
   else
     state->current_turret--;
+  printf("change turret to (%d)\n", state->current_turret);
 }
 
-INPUT_COMMAND(rotate_left) {
+INPUT_COMMAND(rotate_counter) {
   Turret *t = (Turret *)e;
-  t->rotation.r--;
-  t->rotation.r = MAX(t->rotation.r, 0.0f);
+  t->rotation.theta -= 0.15f;
+  //t->rotation.theta = MAX(t->rotation.theta, 0.0f);
+  printf("rotate turret (%d) to %f\n", state->current_turret, t->rotation.theta);
 }
 
-INPUT_COMMAND(rotate_right) {
+INPUT_COMMAND(rotate_clockwise) {
   Turret *t = (Turret *)e;
-  t->rotation.r++;
-  t->rotation.r = MIN(t->rotation.r, 360.0f);
+  t->rotation.theta += 0.15f;
+  //t->rotation.theta = MIN(t->rotation.theta, 360.0f);
+  printf("rotate turret (%d) to %f\n", state->current_turret, t->rotation.theta);
 }
 
 INPUT_COMMAND(increase_spread) {
+  Turret *t = (Turret *)e;
+  Gun *g = &t->gun;
+  g->trajectory.theta += 0.05f;
   // TODO allow spreading fire
+  printf("spread turret (%d) to %f\n", state->current_turret, g->trajectory.theta);
 }
 
 INPUT_COMMAND(decrease_spread) {
+  Turret *t = (Turret *)e;
+  Gun *g = &t->gun;
+  g->trajectory.theta -= 0.05f;
   // TODO allow spreading fire
+  printf("spread turret (%d) to %f\n", state->current_turret, g->trajectory.theta);
 }
 
 INPUT_COMMAND(null_command) {}
@@ -146,8 +158,8 @@ static const InputHandler ih_cntlr = {.kind = INPUT_KIND_CONTROLLER,
 static const KeyboardAndMouseInputHandler kbm_input_handler = {
     .key_w = &increase_spread,
     .key_s = &decrease_spread,
-    .key_a = &rotate_left,
-    .key_d = &rotate_right,
+    .key_a = &rotate_counter,
+    .key_d = &rotate_clockwise,
     .key_j = &prev_turret,
     .key_i = &next_turret,
     .key_l = &next_turret,
@@ -161,8 +173,8 @@ static const KeyboardAndMouseInputHandler kbm_input_handler = {
 static const ControllerInputHandler controller_input_handler = {
     .dpad_up = &increase_spread,
     .dpad_down = &decrease_spread,
-    .dpad_left = &rotate_left,
-    .dpad_right = &rotate_right,
+    .dpad_left = &rotate_counter,
+    .dpad_right = &rotate_clockwise,
     .button_a = &prev_turret,
     .button_b = &next_turret,
     .button_start = &pause_game,
@@ -229,29 +241,43 @@ void cartesianToPolar(Position *c, Polar *p) {
 void polarToCartesian(Vec2D *c, Polar *p, Polar *parent) {
   c->x = p->r * cosf(p->theta + parent->theta);
   c->y = p->r * sinf(p->theta + parent->theta);
+  //c->x = p->r * cosf(parent->theta);
+  //c->y = p->r * sinf(parent->theta);
 }
 
 EMIT_BULLET(shoot_bullet) {
   if (gun->num_particles == MAX_BULLETS)
     return NULL;
   Bullet *next = &gun->clip->pool[gun->num_particles];
-  memcpy(&next->e.position, &gun->position, sizeof(Position));
+  memset(next, 0, sizeof(Bullet));
+  next->e.position.x = gun->position.x;
+  next->e.position.y = gun->position.y;
+  next->e.position.x += gun->parent_position->x;
+  next->e.position.y += gun->parent_position->y;
   next->e.draw = &state->bullet_draw_component;
   memset(&gun->clip->phys[gun->num_particles], 0, sizeof(PhysicsComponent));
   next->e.phys = &gun->clip->phys[gun->num_particles];
   next->ammo = gun->bullet->ammo;
   gun->num_particles++;
   memset(&next->e.phys->accel, 0, sizeof(Vec2D));
-  next->e.phys->accel.x = 1.2f;
-  next->e.phys->accel.y = 1.2f;
+  next->e.phys->accel.x = 1.0f;
+  next->e.phys->accel.y = 1.0f;
   polarToCartesian(&next->e.phys->veloc, &gun->trajectory, gun->parent_rotation);
   return next;
 }
 
 RECLAIM_BULLET(reclaim_bullet) {
+  Bullet* moving = &gun->clip->pool[gun->num_particles-1];
   // TODO: detect a bullet outside of the memory range
-  memmove(bullet, &gun->clip->pool[gun->num_particles - 1], sizeof(Bullet));
+  bullet->ammo = moving->ammo;
+  bullet->e.position = moving->e.position;
+  bullet->e.phys->accel.x = moving->e.phys->accel.x;
+  bullet->e.phys->accel.y = moving->e.phys->accel.y;
+  bullet->e.phys->veloc.x = moving->e.phys->veloc.x;
+  bullet->e.phys->veloc.y = moving->e.phys->veloc.y;
+  bullet->e.kind = moving->e.kind;
   gun->num_particles--;
+  
 }
 
 UPDATE_BULLETS(update_bullets) {
@@ -274,10 +300,12 @@ UPDATE_BULLETS(update_bullets) {
     if ((bb_next_x.position.x < state->screen_w/-2.0f) ||
 	(bb_next_x.position.x + bb_next_x.dim->x > state->screen_w/2.0f)) {
       reclaim_bullet(gun, b);
+      continue;
     } 
     if ((bb_next_y.position.y < state->screen_h/-2.0f) ||
 	(bb_next_y.position.y + bb_next_y.dim->y > state->screen_h/2.0f)) {
       reclaim_bullet(gun, b);
+      continue;
     }
     // calculate next position
     b->e.position.x += speed(dt, b->e.phys->accel.x, b->e.phys->veloc.x);
@@ -296,10 +324,12 @@ void init_turret(Turret *t, Position *pos, float rotation)
   t->rotation.theta = rotation;
   t->gun.bullet = &state->bullet0;
   t->gun.num_particles = 0;
-  t->gun.rate = 5.0f;
-  t->gun.trajectory.r = 20.0f;
+  t->gun.rate = 0.15f;
+  t->gun.last_fire = t->gun.rate;
+  t->gun.trajectory.r = 500.0f;
   t->gun.trajectory.theta = 0;
   t->gun.parent_rotation = &t->rotation;
+  t->gun.parent_position = &t->e.position;
   t->gun.clip = &state->clip[state->turret_count];
   t = &state->turret[state->turret_count];
   state->turret_count++;
