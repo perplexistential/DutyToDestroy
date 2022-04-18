@@ -92,10 +92,9 @@ INPUT_COMMAND(pause_game)
 
 INPUT_COMMAND(next_turret)
 {
+  state->current_turret++;
   if (state->current_turret >= state->turret_count)
     state->current_turret = 0;
-  else
-    state->current_turret++;
   printf("change turret to (%d)\n", state->current_turret);
 }
 
